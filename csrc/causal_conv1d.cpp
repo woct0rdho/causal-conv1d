@@ -22,6 +22,7 @@
 #include <optional>
 
 #include "causal_conv1d.h"
+#include "causal_conv1d_stable_compat.h"  // 2.9 target fallbacks for missing stable ops.
 
 using torch::stable::Tensor;
 using torch::headeronly::ScalarType;
@@ -75,26 +76,6 @@ cudaStream_t get_cuda_stream(const Tensor &tensor) {
     void* stream_ptr = nullptr;
     TORCH_ERROR_CODE_CHECK(aoti_torch_get_current_cuda_stream(tensor.get_device_index(), &stream_ptr));
     return static_cast<cudaStream_t>(stream_ptr);
-}
-
-torch::stable::Tensor sum_along_dims(const Tensor &tensor,
-                                     std::initializer_list<int64_t> dims) {
-    auto dims_ref = torch::headeronly::IntHeaderOnlyArrayRef(dims);
-    return torch::stable::sum(tensor,
-                              std::optional<torch::headeronly::IntHeaderOnlyArrayRef>(dims_ref),
-                              false,
-                              std::nullopt);
-}
-
-void add_tensor_in_place(Tensor tensor, const Tensor &other) {
-    auto updated = torch::stable::subtract(tensor, other, -1.0);
-    torch::stable::copy_(tensor, updated);
-}
-
-void add_workspace_sum_in_place(Tensor tensor,
-                                const Tensor &workspace,
-                                std::initializer_list<int64_t> dims) {
-    add_tensor_in_place(tensor, sum_along_dims(workspace, dims));
 }
 
 }
@@ -318,8 +299,8 @@ causal_conv1d_bwd(const Tensor &x,
 
     STD_TORCH_CHECK(x.stride(2) == 1 || x.stride(1) == 1);
     const bool is_channel_last = x.stride(1) == 1 && x.stride(2) > 1;
-    if (!is_channel_last && dout.stride(2) != 1) { dout = torch::stable::contiguous(dout); }
-    if (is_channel_last && dout.stride(1) != 1) { dout = torch::stable::transpose(torch::stable::contiguous(torch::stable::transpose(dout, 1, 2)), 1, 2); }
+    if (!is_channel_last && dout.stride(2) != 1) { dout = causal_conv1d::stable_compat::contiguous(dout); }
+    if (is_channel_last && dout.stride(1) != 1) { dout = torch::stable::transpose(causal_conv1d::stable_compat::contiguous(torch::stable::transpose(dout, 1, 2)), 1, 2); }
 
     if (is_channel_last) {
         STD_TORCH_CHECK(dim % 8 == 0, "causal_conv1d only supports channel dimension divisible by 8 for now");
@@ -468,14 +449,14 @@ causal_conv1d_bwd(const Tensor &x,
 
     if (deterministic) {
         if (!is_channel_last) {
-            add_workspace_sum_in_place(dweight, *dweight_workspace, {0});
+            causal_conv1d::stable_compat::add_workspace_sum_in_place(dweight, *dweight_workspace, {0}, stream);
             if (dbias_.has_value()) {
-                add_workspace_sum_in_place(*dbias_, *dbias_workspace, {0});
+                causal_conv1d::stable_compat::add_workspace_sum_in_place(*dbias_, *dbias_workspace, {0}, stream);
             }
         } else {
-            add_workspace_sum_in_place(dweight, *dweight_workspace, {0, 1});
+            causal_conv1d::stable_compat::add_workspace_sum_in_place(dweight, *dweight_workspace, {0, 1}, stream);
             if (dbias_.has_value()) {
-                add_workspace_sum_in_place(*dbias_, *dbias_workspace, {0, 1});
+                causal_conv1d::stable_compat::add_workspace_sum_in_place(*dbias_, *dbias_workspace, {0, 1}, stream);
             }
         }
     }

@@ -36,7 +36,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 this_dir = os.path.dirname(os.path.abspath(__file__))
 
 PACKAGE_NAME = "causal_conv1d"
-TORCH_TARGET_VERSION = "0x020a000000000000"
+TORCH_TARGET_VERSION = "0x0209000000000000"
 PY_LIMITED_API_TAG = f"cp{(int(min_supported_cpython, 16) >> 24) & 0xFF}{(int(min_supported_cpython, 16) >> 16) & 0xFF}"
 PYTHON_REQUIRES_TAG = f">={(int(min_supported_cpython, 16) >> 24) & 0xFF}.{(int(min_supported_cpython, 16) >> 16) & 0xFF}"
 
